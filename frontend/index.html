@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A股智能选股系统</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    
+    /* Header */
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 24px; }
+    .header h1 { font-size: 28px; margin-bottom: 8px; }
+    .header p { opacity: 0.9; font-size: 14px; }
+    
+    /* Stats Cards */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .stat-card .label { color: #666; font-size: 14px; margin-bottom: 8px; }
+    .stat-card .value { font-size: 28px; font-weight: bold; color: #333; }
+    .stat-card .value.up { color: #e74c3c; }
+    .stat-card .value.down { color: #27ae60; }
+    
+    /* Stock Table */
+    .stock-table { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .table-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .table-header h3 { font-size: 16px; color: #333; }
+    .filter-tabs { display: flex; gap: 8px; }
+    .filter-tabs button { padding: 6px 16px; border: none; background: #f0f0f0; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+    .filter-tabs button.active { background: #667eea; color: white; }
+    .filter-tabs button:hover { background: #e0e0e0; }
+    
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 14px 16px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #fafafa; font-weight: 600; color: #666; font-size: 13px; }
+    td { font-size: 14px; color: #333; }
+    
+    .signal-badge { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .signal-buy { background: #fee; color: #e74c3c; }
+    .signal-sell { background: #efe; color: #27ae60; }
+    .signal-hold { background: #eef; color: #3498db; }
+    
+    .confidence-bar { width: 80px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+    .confidence-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 3px; }
+    
+    .reason { max-width: 300px; font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    
+    /* Analyze Section */
+    .analyze-section { background: white; padding: 20px; border-radius: 12px; margin-top: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .analyze-section h3 { margin-bottom: 16px; }
+    .input-group { display: flex; gap: 12px; margin-bottom: 16px; }
+    .input-group input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    .input-group button { padding: 10px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
+    .input-group button:hover { background: #5a6fd6; }
+    .input-group button:disabled { background: #ccc; cursor: not-allowed; }
+    
+    /* Price Chart */
+    .chart-container { margin-top: 20px; border: 1px solid #eee; border-radius: 8px; padding: 16px; display: none; }
+    .chart-container.active { display: block; }
+    .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .chart-header h4 { font-size: 15px; color: #333; }
+    .chart-info { font-size: 13px; color: #888; }
+    .chart-info span { margin-left: 16px; }
+    #priceChart { width: 100%; height: 260px; display: block; }
+    .chart-legend { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: #666; }
+    .chart-legend span { display: flex; align-items: center; gap: 4px; }
+    .chart-legend .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    
+    /* Analysis Result Card */
+    .analysis-result { margin-top: 20px; padding: 16px; border: 1px solid #e8e8ff; border-radius: 8px; background: #f8f7ff; display: none; }
+    .analysis-result.active { display: block; }
+    .analysis-result h4 { font-size: 14px; color: #333; margin-bottom: 12px; }
+    .result-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+    .result-tag { padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+    .result-tag.buy { background: #fee; color: #e74c3c; }
+    .result-tag.sell { background: #efe; color: #27ae60; }
+    .result-tag.hold { background: #eef; color: #3498db; }
+    
+    /* Loading */
+    .loading { text-align: center; padding: 40px; color: #666; }
+    
+    /* Empty State */
+    .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+    .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>📈 A股智能选股系统</h1>
+        <p>基于技术分析与机器学习的每日股票推荐</p>
+      </div>
+      
+      <!-- Stats -->
+      <div class="stats">
+        <div class="stat-card">
+          <div class="label">今日推荐总数</div>
+          <div class="value">{{ stats.total }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">买入信号</div>
+          <div class="value up">{{ stats.buy }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">卖出信号</div>
+          <div class="value down">{{ stats.sell }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">平均置信度</div>
+          <div class="value">{{ stats.avgConfidence }}%</div>
+        </div>
+      </div>
+      
+      <!-- Stock Table -->
+      <div class="stock-table">
+        <div class="table-header">
+          <h3>今日推荐股票</h3>
+          <div class="filter-tabs">
+            <button :class="{active: filter === 'all'}" @click="filter = 'all'">全部</button>
+            <button :class="{active: filter === 'BUY'}" @click="filter = 'BUY'">买入</button>
+            <button :class="{active: filter === 'SELL'}" @click="filter = 'SELL'">卖出</button>
+          </div>
+        </div>
+        
+        <div v-if="loading" class="loading">加载中...</div>
+        <div v-else-if="filteredStocks.length === 0" class="empty-state">
+          <div class="icon">📊</div>
+          <p>暂无推荐数据</p>
+        </div>
+        <table v-else>
+          <thead>
+            <tr>
+              <th>股票代码</th>
+              <th>股票名称</th>
+              <th>信号</th>
+              <th>来源</th>
+              <th>置信度</th>
+              <th>目标价</th>
+              <th>止损价</th>
+              <th>推荐理由</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="stock in filteredStocks" :key="stock.id">
+              <td>{{ stock.stockCode }}</td>
+              <td>{{ stock.stockName || '-' }}</td>
+              <td>
+                <span :class="['signal-badge', 'signal-' + stock.signalType.toLowerCase()]">
+                  {{ stock.signalType === 'BUY' ? '买入' : stock.signalType === 'SELL' ? '卖出' : '持有' }}
+                </span>
+              </td>
+              <td>{{ getSourceLabel(stock.signalSource) }}</td>
+              <td>
+                <div class="confidence-bar">
+                  <div class="confidence-fill" :style="{width: stock.confidenceScore + '%'}"></div>
+                </div>
+                <span style="font-size:12px;color:#666;margin-left:8px">{{ stock.confidenceScore }}%</span>
+              </td>
+              <td>{{ stock.targetPrice ? '¥' + parseFloat(stock.targetPrice).toFixed(2) : '-' }}</td>
+              <td>{{ stock.stopLoss ? '¥' + parseFloat(stock.stopLoss).toFixed(2) : '-' }}</td>
+              <td class="reason">{{ stock.reason }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- Analyze Section -->
+      <div class="analyze-section">
+        <h3>🔍 分析股票</h3>
+        <div class="input-group">
+          <input v-model="inputCode" placeholder="输入股票代码，如：600519" @keyup.enter="analyzeStock">
+          <button :disabled="!inputCode || analyzing" @click="analyzeStock">
+            {{ analyzing ? '分析中...' : '开始分析' }}
+          </button>
+        </div>
+        <p style="color:#999;font-size:12px">输入A股股票代码，系统将综合技术分析和机器学习模型给出推荐</p>
+        
+        <!-- Price Chart -->
+        <div class="chart-container" :class="{active: chartData.prices.length > 0}">
+          <div class="chart-header">
+            <h4>📈 {{ chartData.name }} ({{ inputCode || chartData.code }})</h4>
+            <div class="chart-info">
+              <span>最新价: <strong :style="{color: chartData.change >= 0 ? '#e74c3c' : '#27ae60'}">¥{{ chartData.prices[chartData.prices.length-1] }}</strong></span>
+              <span>涨跌: <strong :style="{color: chartData.change >= 0 ? '#e74c3c' : '#27ae60'}">{{ chartData.change >= 0 ? '+' : '' }}{{ chartData.change.toFixed(2) }}%</strong></span>
+            </div>
+          </div>
+          <canvas id="priceChart"></canvas>
+          <div class="chart-legend">
+            <span><i class="dot" style="background:#667eea"></i> 收盘价</span>
+            <span><i class="dot" style="background:#f39c12"></i> MA5</span>
+            <span><i class="dot" style="background:#27ae60"></i> MA20</span>
+          </div>
+        </div>
+        
+        <!-- Analysis Result -->
+        <div class="analysis-result" :class="{active: analysisResults.length > 0}">
+          <h4>分析结果</h4>
+          <div class="result-tags">
+            <span v-for="r in analysisResults" :key="r.id" :class="['result-tag', 'signal-' + r.signalType.toLowerCase()]">
+              {{ r.signalType === 'BUY' ? '买入' : r.signalType === 'SELL' ? '卖出' : '持有' }} 
+              ({{ getSourceLabel(r.signalSource) }}, {{ r.confidenceScore }}%置信度)
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+    
+    createApp({
+      data() {
+        return {
+          stocks: [],
+          filter: 'all',
+          inputCode: '',
+          loading: true,
+          analyzing: false,
+          chartData: {
+            code: '',
+            name: '',
+            prices: [],
+            dates: [],
+            change: 0,
+            ma5: [],
+            ma20: []
+          },
+          analysisResults: []
+        };
+      },
+      computed: {
+        filteredStocks() {
+          if (this.filter === 'all') return this.stocks;
+          return this.stocks.filter(s => s.signalType === this.filter);
+        },
+        stats() {
+          const total = this.stocks.length;
+          const buy = this.stocks.filter(s => s.signalType === 'BUY').length;
+          const sell = this.stocks.filter(s => s.signalType === 'SELL').length;
+          const avgConfidence = total > 0 
+            ? Math.round(this.stocks.reduce((sum, s) => sum + s.confidenceScore, 0) / total) 
+            : 0;
+          return { total, buy, sell, avgConfidence };
+        }
+      },
+      mounted() {
+        this.loadRecommendations();
+      },
+      methods: {
+        async loadRecommendations() {
+          this.loading = true;
+          try {
+            const res = await axios.get('http://localhost:8080/api/stock/recommend/today');
+            this.stocks = res.data || [];
+          } catch (e) {
+            console.error('加载失败:', e);
+            this.stocks = [];
+          }
+          this.loading = false;
+        },
+        async analyzeStock() {
+          if (!this.inputCode) return;
+          const code = this.inputCode.trim();
+          this.analyzing = true;
+          this.analysisResults = [];
+          try {
+            // 获取股票数据
+            await axios.post(`http://localhost:8080/api/stock/fetch/${code}`);
+            // 获取分析结果
+            const res = await axios.post(`http://localhost:8080/api/stock/analyze/${code}`);
+            this.analysisResults = res.data || [];
+            
+            // 更新图表数据（模拟，实际从API获取历史价格）
+            this.updateChartData(code, this.analysisResults);
+            
+            // 更新推荐列表
+            if (this.analysisResults.length > 0) {
+              this.stocks = [...this.analysisResults, ...this.stocks];
+            }
+            this.inputCode = '';
+          } catch (e) {
+            console.error('分析失败:', e);
+            // 模拟演示数据
+            this.showDemoChart(code);
+          }
+          this.analyzing = false;
+        },
+        updateChartData(code, results) {
+          // 实际应用中应从后端获取历史价格数据
+          // 这里生成模拟数据演示
+          const stockName = results[0]?.stockName || code;
+          this.generateDemoChart(code, stockName);
+        },
+        showDemoChart(code) {
+          this.generateDemoChart(code, code);
+        },
+        generateDemoChart(code, name) {
+          const days = 60;
+          const basePrice = 50 + Math.random() * 100;
+          const prices = [];
+          let price = basePrice;
+          
+          for (let i = 0; i < days; i++) {
+            price = price * (1 + (Math.random() - 0.48) * 0.04);
+            prices.push(parseFloat(price.toFixed(2)));
+          }
+          
+          const firstPrice = prices[0];
+          const lastPrice = prices[prices.length - 1];
+          const change = ((lastPrice - firstPrice) / firstPrice) * 100;
+          
+          this.chartData = {
+            code: code,
+            name: name,
+            prices: prices,
+            dates: this.generateDates(days),
+            change: change,
+            ma5: this.calcMA(prices, 5),
+            ma20: this.calcMA(prices, 20)
+          };
+          
+          this.$nextTick(() => this.drawChart());
+        },
+        generateDates(days) {
+          const dates = [];
+          const now = new Date();
+          for (let i = days - 1; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            dates.push(`${d.getMonth()+1}/${d.getDate()}`);
+          }
+          return dates;
+        },
+        calcMA(prices, period) {
+          const ma = [];
+          for (let i = 0; i < prices.length; i++) {
+            if (i < period - 1) {
+              ma.push(null);
+            } else {
+              const slice = prices.slice(i - period + 1, i + 1);
+              ma.push(parseFloat((slice.reduce((a, b) => a + b, 0) / period).toFixed(2)));
+            }
+          }
+          return ma;
+        },
+        drawChart() {
+          const canvas = document.getElementById('priceChart');
+          if (!canvas || this.chartData.prices.length === 0) return;
+          
+          const ctx = canvas.getContext('2d');
+          const dpr = window.devicePixelRatio || 1;
+          const rect = canvas.getBoundingClientRect();
+          canvas.width = rect.width * dpr;
+          canvas.height = rect.height * dpr;
+          ctx.scale(dpr, dpr);
+          
+          const width = rect.width;
+          const height = rect.height;
+          const padding = { top: 20, right: 60, bottom: 40, left: 10 };
+          const chartWidth = width - padding.left - padding.right;
+          const chartHeight = height - padding.top - padding.bottom;
+          
+          const prices = this.chartData.prices;
+          const minPrice = Math.min(...prices) * 0.98;
+          const maxPrice = Math.max(...prices) * 1.02;
+          const priceRange = maxPrice - minPrice;
+          
+          const getX = (i) => padding.left + (i / (prices.length - 1)) * chartWidth;
+          const getY = (p) => padding.top + (1 - (p - minPrice) / priceRange) * chartHeight;
+          
+          // Clear
+          ctx.clearRect(0, 0, width, height);
+          
+          // Grid lines
+          ctx.strokeStyle = '#f0f0f0';
+          ctx.lineWidth = 1;
+          for (let i = 0; i <= 4; i++) {
+            const y = padding.top + (i / 4) * chartHeight;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(width - padding.right, y);
+            ctx.stroke();
+            // Price labels
+            const priceLabel = (maxPrice - (i / 4) * priceRange).toFixed(1);
+            ctx.fillStyle = '#999';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('¥' + priceLabel, width - padding.right + 5, y + 4);
+          }
+          
+          // X-axis date labels
+          ctx.fillStyle = '#999';
+          ctx.font = '10px sans-serif';
+          ctx.textAlign = 'center';
+          const step = Math.ceil(prices.length / 6);
+          for (let i = 0; i < prices.length; i += step) {
+            ctx.fillText(this.chartData.dates[i], getX(i), height - 10);
+          }
+          
+          // Draw MA lines first (below price line)
+          const drawLine = (data, color, lineWidth) => {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.beginPath();
+            let started = false;
+            for (let i = 0; i < data.length; i++) {
+              if (data[i] === null) { started = false; continue; }
+              if (!started) { ctx.moveTo(getX(i), getY(data[i])); started = true; }
+              else { ctx.lineTo(getX(i), getY(data[i])); }
+            }
+            ctx.stroke();
+          };
+          
+          drawLine(this.chartData.ma20, '#27ae60', 1.5);
+          drawLine(this.chartData.ma5, '#f39c12', 1.5);
+          
+          // Draw price line with gradient fill
+          const gradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+          gradient.addColorStop(0, 'rgba(102, 126, 234, 0.3)');
+          gradient.addColorStop(1, 'rgba(102, 126, 234, 0)');
+          
+          ctx.beginPath();
+          ctx.moveTo(getX(0), getY(prices[0]));
+          for (let i = 1; i < prices.length; i++) {
+            ctx.lineTo(getX(i), getY(prices[i]));
+          }
+          
+          // Fill area
+          ctx.lineTo(getX(prices.length - 1), height - padding.bottom);
+          ctx.lineTo(getX(0), height - padding.bottom);
+          ctx.closePath();
+          ctx.fillStyle = gradient;
+          ctx.fill();
+          
+          // Price line
+          ctx.beginPath();
+          ctx.moveTo(getX(0), getY(prices[0]));
+          for (let i = 1; i < prices.length; i++) {
+            ctx.lineTo(getX(i), getY(prices[i]));
+          }
+          ctx.strokeStyle = '#667eea';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          
+          // Last price dot
+          const lastY = getY(prices[prices.length - 1]);
+          const lastX = getX(prices.length - 1);
+          ctx.beginPath();
+          ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+          ctx.fillStyle = '#667eea';
+          ctx.fill();
+          ctx.strokeStyle = 'white';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          
+          // Price label at end
+          ctx.fillStyle = '#667eea';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText('¥' + prices[prices.length - 1], lastX + 8, lastY + 4);
+        },
+        getSourceLabel(source) {
+          const map = { 'TECHNICAL': '技术分析', 'ML': '机器学习', 'BOTH': '综合' };
+          return map[source] || source;
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

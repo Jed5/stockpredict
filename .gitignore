@@ -1,0 +1,43 @@
+# Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Maven
+backend/pom.xml.orig
+.mvn/wrapper/maven-wrapper.jar
+
+# Spring Boot
+*.pid
+
+# Database
+*.mv.db
+*.trace.db
+db/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# Node (if any)
+node_modules/
+
+# Misc
+*.bak
+*.tmp
+*.temp
+*.orig
