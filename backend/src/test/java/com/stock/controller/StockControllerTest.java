@@ -3,6 +3,7 @@ package com.stock.controller;
 import com.stock.model.StockRecommend;
 import com.stock.service.StockRecommendService;
 import com.stock.service.DataCollectionService;
+import com.stock.service.MLPredictionService;
 import com.stock.repository.StockDailyRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,11 +33,14 @@ class StockControllerTest {
     @Mock
     private StockDailyRepository stockDailyRepository;
 
+    @Mock
+    private MLPredictionService mlPredictionService;
+
     private StockController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new StockController(stockRecommendService, dataCollectionService, stockDailyRepository);
+        controller = new StockController(stockRecommendService, dataCollectionService, stockDailyRepository, mlPredictionService);
     }
 
     private StockRecommend createRecommend(Long id, String code, String name,
