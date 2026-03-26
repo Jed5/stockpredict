@@ -24,6 +24,7 @@ backend/pom.xml.orig
 # Database
 *.mv.db
 *.trace.db
+db.trace.db.old
 db/
 
 # Python

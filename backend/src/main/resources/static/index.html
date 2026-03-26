@@ -194,6 +194,7 @@
             <span><i class="dot" style="background:#667eea"></i> 收盘价</span>
             <span><i class="dot" style="background:#f39c12"></i> MA5</span>
             <span><i class="dot" style="background:#27ae60"></i> MA20</span>
+            <span><i class="dot" style="background:#9b59b6"></i> MA60</span>
           </div>
         </div>
         
@@ -272,12 +273,16 @@
           try {
             // 获取股票数据
             await axios.post(`http://localhost:8080/api/stock/fetch/${code}`);
+            // 获取K线图表数据
+            const chartRes = await axios.get(`http://localhost:8080/api/chart/kline/${code}`);
+            if (chartRes.data && chartRes.data.data && chartRes.data.data.length > 0) {
+              this.loadRealChartData(chartRes.data);
+            } else {
+              this.showDemoChart(code);
+            }
             // 获取分析结果
             const res = await axios.post(`http://localhost:8080/api/stock/analyze/${code}`);
             this.analysisResults = res.data || [];
-            
-            // 更新图表数据（模拟，实际从API获取历史价格）
-            this.updateChartData(code, this.analysisResults);
             
             // 更新推荐列表
             if (this.analysisResults.length > 0) {
@@ -291,40 +296,49 @@
           }
           this.analyzing = false;
         },
-        updateChartData(code, results) {
-          // 实际应用中应从后端获取历史价格数据
-          // 这里生成模拟数据演示
-          const stockName = results[0]?.stockName || code;
-          this.generateDemoChart(code, stockName);
+        loadRealChartData(data) {
+          const candles = data.data;
+          const prices = candles.map(c => c.close);
+          const dates = candles.map(c => c.date.substring(5));
+          const maMap = data.ma || {};
+          const change = data.change || 0;
+          
+          this.chartData = {
+            code: data.code,
+            name: data.name || data.code,
+            prices: prices,
+            dates: dates,
+            change: change,
+            ma5: maMap.MA5 || [],
+            ma10: maMap.MA10 || [],
+            ma20: maMap.MA20 || [],
+            ma60: maMap.MA60 || [],
+            candles: candles
+          };
+          this.$nextTick(() => this.drawChart());
         },
         showDemoChart(code) {
-          this.generateDemoChart(code, code);
-        },
-        generateDemoChart(code, name) {
           const days = 60;
           const basePrice = 50 + Math.random() * 100;
           const prices = [];
           let price = basePrice;
-          
           for (let i = 0; i < days; i++) {
             price = price * (1 + (Math.random() - 0.48) * 0.04);
             prices.push(parseFloat(price.toFixed(2)));
           }
-          
           const firstPrice = prices[0];
           const lastPrice = prices[prices.length - 1];
           const change = ((lastPrice - firstPrice) / firstPrice) * 100;
-          
           this.chartData = {
-            code: code,
-            name: name,
+            code: code, name: code,
             prices: prices,
             dates: this.generateDates(days),
             change: change,
             ma5: this.calcMA(prices, 5),
-            ma20: this.calcMA(prices, 20)
+            ma10: this.calcMA(prices, 10),
+            ma20: this.calcMA(prices, 20),
+            ma60: this.calcMA(prices, 60)
           };
-          
           this.$nextTick(() => this.drawChart());
         },
         generateDates(days) {
@@ -374,7 +388,6 @@
           const getX = (i) => padding.left + (i / (prices.length - 1)) * chartWidth;
           const getY = (p) => padding.top + (1 - (p - minPrice) / priceRange) * chartHeight;
           
-          // Clear
           ctx.clearRect(0, 0, width, height);
           
           // Grid lines
@@ -386,7 +399,6 @@
             ctx.moveTo(padding.left, y);
             ctx.lineTo(width - padding.right, y);
             ctx.stroke();
-            // Price labels
             const priceLabel = (maxPrice - (i / 4) * priceRange).toFixed(1);
             ctx.fillStyle = '#999';
             ctx.font = '11px sans-serif';
@@ -403,8 +415,31 @@
             ctx.fillText(this.chartData.dates[i], getX(i), height - 10);
           }
           
-          // Draw MA lines first (below price line)
+          // Draw candlestick (K-line) if real data available
+          if (this.chartData.candles && this.chartData.candles.length > 0) {
+            const candleW = Math.max(2, chartWidth / prices.length * 0.7);
+            for (let i = 0; i < this.chartData.candles.length; i++) {
+              const c = this.chartData.candles[i];
+              const x = getX(i);
+              const isUp = c.close >= c.open;
+              ctx.strokeStyle = isUp ? '#e74c3c' : '#27ae60';
+              ctx.fillStyle = isUp ? '#e74c3c' : '#27ae60';
+              ctx.lineWidth = 1;
+              // wick
+              ctx.beginPath();
+              ctx.moveTo(x, getY(c.high));
+              ctx.lineTo(x, getY(c.low));
+              ctx.stroke();
+              // body
+              const bodyTop = getY(Math.max(c.open, c.close));
+              const bodyBottom = getY(Math.min(c.open, c.close));
+              ctx.fillRect(x - candleW / 2, bodyTop, candleW, Math.max(1, bodyBottom - bodyTop));
+            }
+          }
+          
+          // Draw MA lines
           const drawLine = (data, color, lineWidth) => {
+            if (!data) return;
             ctx.strokeStyle = color;
             ctx.lineWidth = lineWidth;
             ctx.beginPath();
@@ -418,35 +453,30 @@
           };
           
           drawLine(this.chartData.ma20, '#27ae60', 1.5);
-          drawLine(this.chartData.ma5, '#f39c12', 1.5);
+          drawLine(this.chartData.ma10, '#f39c12', 1.5);
+          drawLine(this.chartData.ma5, '#f39c12', 1);
+          drawLine(this.chartData.ma60, '#9b59b6', 1.5);
           
-          // Draw price line with gradient fill
-          const gradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
-          gradient.addColorStop(0, 'rgba(102, 126, 234, 0.3)');
-          gradient.addColorStop(1, 'rgba(102, 126, 234, 0)');
-          
-          ctx.beginPath();
-          ctx.moveTo(getX(0), getY(prices[0]));
-          for (let i = 1; i < prices.length; i++) {
-            ctx.lineTo(getX(i), getY(prices[i]));
+          // Draw price line if no candlestick
+          if (!this.chartData.candles || this.chartData.candles.length === 0) {
+            const gradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+            gradient.addColorStop(0, 'rgba(102, 126, 234, 0.3)');
+            gradient.addColorStop(1, 'rgba(102, 126, 234, 0)');
+            ctx.beginPath();
+            ctx.moveTo(getX(0), getY(prices[0]));
+            for (let i = 1; i < prices.length; i++) ctx.lineTo(getX(i), getY(prices[i]));
+            ctx.lineTo(getX(prices.length - 1), height - padding.bottom);
+            ctx.lineTo(getX(0), height - padding.bottom);
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(getX(0), getY(prices[0]));
+            for (let i = 1; i < prices.length; i++) ctx.lineTo(getX(i), getY(prices[i]));
+            ctx.strokeStyle = '#667eea';
+            ctx.lineWidth = 2;
+            ctx.stroke();
           }
-          
-          // Fill area
-          ctx.lineTo(getX(prices.length - 1), height - padding.bottom);
-          ctx.lineTo(getX(0), height - padding.bottom);
-          ctx.closePath();
-          ctx.fillStyle = gradient;
-          ctx.fill();
-          
-          // Price line
-          ctx.beginPath();
-          ctx.moveTo(getX(0), getY(prices[0]));
-          for (let i = 1; i < prices.length; i++) {
-            ctx.lineTo(getX(i), getY(prices[i]));
-          }
-          ctx.strokeStyle = '#667eea';
-          ctx.lineWidth = 2;
-          ctx.stroke();
           
           // Last price dot
           const lastY = getY(prices[prices.length - 1]);
@@ -458,8 +488,6 @@
           ctx.strokeStyle = 'white';
           ctx.lineWidth = 2;
           ctx.stroke();
-          
-          // Price label at end
           ctx.fillStyle = '#667eea';
           ctx.font = 'bold 12px sans-serif';
           ctx.textAlign = 'left';
